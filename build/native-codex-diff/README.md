@@ -1,6 +1,6 @@
 # 原生差异审阅的源码与兼容构建
 
-功能源码维护在当前主仓库。补丁以官方 1.137.0 提交 `645f29cc3176500b4b5762ba887cf2a7f0ffdf2c` 为构建基线；主仓库继续保留 1.139.0，不需要切换分支或修改已安装的编辑器。
+功能源码维护在当前主仓库。补丁以官方 1.138.0 提交 `7debcd0e2acdea1c52de81bf9ee1620444407dda` 为构建基线；主仓库继续保留 1.139.0，不需要切换分支或修改已安装的编辑器。
 
 ## 日常修改位置
 
@@ -20,17 +20,17 @@
 在仓库根目录运行：
 
 ```powershell
-git fetch https://github.com/microsoft/vscode.git 645f29cc3176500b4b5762ba887cf2a7f0ffdf2c
-node build/native-codex-diff/build.mjs all --official-app-dir 'D:\Microsoft VS Code\645f29cc31\resources\app'
+git fetch https://github.com/microsoft/vscode.git 7debcd0e2acdea1c52de81bf9ee1620444407dda
+node build/native-codex-diff/build.mjs all --official-app-dir 'D:\Microsoft VS Code\7debcd0e2a\resources\app'
 ```
 
-也可使用仓库快捷命令 `npm run native-diff:package -- --official-app-dir 'D:\Microsoft VS Code\645f29cc31\resources\app'`。
+也可使用仓库快捷命令 `npm run native-diff:package -- --official-app-dir 'D:\Microsoft VS Code\7debcd0e2a\resources\app'`。
 
-命令读取当前工作区的源码内容，包含尚未提交的改动。它从 `target.json` 指定的开发基线提取功能差异，在独立的工作树上应用到官方 1.137.0，并使用该版本自身的锁文件安装构建依赖。发生合并冲突时停止，保留现场供检查。
+命令读取当前工作区的源码内容，包含尚未提交的改动。它从 `target.json` 指定的开发基线提取功能差异，在独立的工作树上应用到官方 1.138.0，并使用该版本自身的锁文件安装构建依赖。发生合并冲突时停止，保留现场供检查。
 
 构建以指定官方安装中的本地化文件为参考，保留旧消息编号；新增消息保留英文原文。目标版本或提交号不符、源码发生变化、产物被修改、哈希校验失败时停止打包。
 
-产物位于 `dist/native-codex-diff/1.137.0-<源码哈希>-<打包工具哈希>/`，包含独立补丁目录和压缩包。根据指定的官方应用目录生成本机安装路径配置，重新安装时无需再次输入路径。打包命令会先执行包检查，以及临时安装副本上的安装、验证、重复安装和恢复测试。不会关闭或修改正在运行的编辑器。同一份产物已存在时停止，避免覆盖已有包。
+产物位于 `dist/native-codex-diff/1.138.0-<源码哈希>-<打包工具哈希>/`，包含独立补丁目录和压缩包。根据指定的官方应用目录生成本机安装路径配置，重新安装时无需再次输入路径。打包命令会先执行包检查，以及临时安装副本上的安装、验证、重复安装和恢复测试。不会关闭或修改正在运行的编辑器。同一份产物已存在时停止，避免覆盖已有包。
 
 也可分别执行 `prepare`(准备兼容源码)、`build`(编译) 和 `package`(打包)；后两个阶段仍需指定官方应用目录。源码变化后重新执行完整命令，不复用旧产物。
 
@@ -44,3 +44,5 @@ npm run transpile-client
 这些测试覆盖审批和实际文本模型、内存文件系统中的保留／撤销行为。安装测试不代替真实界面的点击验证。
 
 升级官方目标版本时，需要更新 `target.json`、安装模板的版本限制，并重新验证兼容构建。开发基线用于提取本功能的完整修改，不能直接改成最新提交，否则已有功能可能从差异中消失。
+
+主进程载荷以指定安装目录的官方文件为输入，由 `runtime-patches.mjs` 精确改写静态文件模块导入，保留官方产品标识及其余代码。构建和打包之间会核对官方输入、变换脚本及输出哈希；安装与恢复验证覆盖全部六个载荷文件。

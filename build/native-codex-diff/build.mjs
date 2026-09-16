@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { patchMainFileSystem } from './runtime-patches.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
@@ -71,7 +72,7 @@ function prepare() {
 	const sourceHash = hash(patch);
 	if (fs.existsSync(statePath)) {
 		const previous = json(statePath);
-		if (previous.sourceHash === sourceHash) { assertState(previous); return previous; }
+		if (previous.sourceHash === sourceHash && previous.officialCommit === target.officialCommit) { assertState(previous); return previous; }
 	}
 	run('git', ['cat-file', '-e', `${target.officialCommit}^{commit}`]);
 	const worktree = path.join(cache, `compat-${target.version}-${sourceHash.slice(0, 12)}`);
@@ -124,8 +125,12 @@ function build(state) {
 	console.log('Building the compatible release and preserving official localization indices...');
 	runVisible(process.execPath, ['build/next/index.ts', 'bundle', '--minify', '--nls', '--nls-reference', path.join(officialApp, 'out'), '--out', 'out-native-codex-diff'], state.worktree);
 	const output = path.join(state.worktree, 'out-native-codex-diff');
+	const mainSource = read(path.join(officialApp, 'out/main.js'));
+	const mainPatch = patchMainFileSystem(mainSource);
+	fs.writeFileSync(path.join(output, 'main.js'), mainPatch.code);
+	console.log(`Preserved official main bundle; redirected ${mainPatch.replacements} file system imports.`);
 	const bundleHashes = Object.fromEntries(target.bundles.map(file => [file, bundleHash(fs.readFileSync(path.join(output, file)))]));
-	writeJson(path.join(cache, 'build.json'), { ...state, bundleHashes, nlsReferenceHash: hash(fs.readFileSync(path.join(officialApp, 'out/nls.messages.json'))) });
+	writeJson(path.join(cache, 'build.json'), { ...state, bundleHashes, runtimeSourceHashes: { 'main.js': hash(mainSource) }, runtimePatchScriptSha256: hash(fs.readFileSync(path.join(here, 'runtime-patches.mjs'))), nlsReferenceHash: hash(fs.readFileSync(path.join(officialApp, 'out/nls.messages.json'))) });
 }
 
 function packageBuild(state) {
@@ -134,8 +139,10 @@ function packageBuild(state) {
 	const built = json(path.join(cache, 'build.json'));
 	assert.equal(built.appliedHash, state.appliedHash, 'Build receipt does not match the sources');
 	assert.equal(built.nlsReferenceHash, hash(fs.readFileSync(path.join(officialApp, 'out/nls.messages.json'))));
+	assert.equal(built.runtimeSourceHashes['main.js'], hash(fs.readFileSync(path.join(officialApp, 'out/main.js'))), 'Official main bundle changed after build');
+	assert.equal(built.runtimePatchScriptSha256, hash(fs.readFileSync(path.join(here, 'runtime-patches.mjs'))), 'Runtime patch changed after build');
 	const output = path.join(state.worktree, 'out-native-codex-diff');
-	const packagingFiles = ['build.mjs', 'target.json', 'PACKAGE-README.md', 'templates/install-native-codex-inline-diff.bat',
+	const packagingFiles = ['build.mjs', 'runtime-patches.mjs', 'target.json', 'PACKAGE-README.md', 'templates/install-native-codex-inline-diff.bat',
 		'templates/scripts/patch-official-vscode.ps1', 'templates/scripts/test-portable-package.ps1', 'templates/scripts/test-patch-official-vscode.ps1'];
 	const packagingHash = hash(packagingFiles.map(file => `${file}:${hash(fs.readFileSync(path.join(here, file)))}`).join('\n'));
 	const packageRoot = path.join(repo, 'dist/native-codex-diff', `${target.version}-${state.sourceHash.slice(0, 12)}-${packagingHash.slice(0, 8)}`, 'portable-vscode-native-inline-diff');
@@ -152,6 +159,7 @@ function packageBuild(state) {
 	fs.writeFileSync(path.join(packageRoot, 'install-target.local.cmd'), `@set "OFFICIAL_INSTALL_DIR=${installDirectory.replaceAll('%', '%%')}"\r\n`);
 	const patch = run('git', ['diff', '--binary', target.officialCommit, '--'], state.worktree);
 	fs.writeFileSync(path.join(packageRoot, 'source-changes.patch'), patch);
+	fs.copyFileSync(path.join(here, 'runtime-patches.mjs'), path.join(packageRoot, 'runtime-patches.mjs'));
 	const hashes = {};
 	for (const file of target.bundles) {
 		const data = fs.readFileSync(path.join(output, file));
@@ -164,7 +172,7 @@ function packageBuild(state) {
 	const checksums = Object.fromEntries(target.bundles.filter(file => Object.hasOwn(official.checksums, file)).map(file => [file, hashes[file]]));
 	const revision = `source-${state.sourceHash.slice(0, 12)}`;
 	const product = { version: target.version, commit: target.officialCommit, checksums,
-		nativeReviewPatch: { revision, sourceDiffSha256: hash(patch).toUpperCase(), developmentCommit: run('git', ['rev-parse', 'HEAD']).trim(), developmentBase: target.developmentBase, sourceHash: state.sourceHash } };
+		nativeReviewPatch: { revision, sourceDiffSha256: hash(patch).toUpperCase(), runtimeSourceHashes: built.runtimeSourceHashes, runtimePatchScriptSha256: built.runtimePatchScriptSha256, developmentCommit: run('git', ['rev-parse', 'HEAD']).trim(), developmentBase: target.developmentBase, sourceHash: state.sourceHash } };
 	writeJson(path.join(packageRoot, 'payload/product.json'), product);
 	for (const name of ['patch-official-vscode.ps1', 'test-portable-package.ps1']) {
 		const scriptPath = path.join(packageRoot, 'scripts', name);

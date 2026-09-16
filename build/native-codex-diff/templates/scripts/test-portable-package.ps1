@@ -32,6 +32,8 @@ function Get-Base64Sha256 {
 
 $packageFullPath = [IO.Path]::GetFullPath($PackageRoot)
 $requiredFiles = @(
+	'runtime-patches.mjs',
+	'payload\bundles\main.js',
 	'install-native-codex-inline-diff.bat',
 	'README.md',
 	'scripts\patch-official-vscode.ps1',
@@ -81,11 +83,15 @@ $sourcePatch = Join-Path $packageFullPath 'source-changes.patch'
 if ((Get-FileHash -LiteralPath $sourcePatch -Algorithm SHA256).Hash -ne $product.nativeReviewPatch.sourceDiffSha256) {
 	throw 'The source changes do not match the payload provenance.'
 }
-if ($product.version -ne '1.137.0' -or $product.commit -ne '14c79d4bed33adba68885de4a1785143a824d311') {
+if ((Get-FileHash -LiteralPath (Join-Path $packageFullPath 'runtime-patches.mjs') -Algorithm SHA256).Hash -ne $product.nativeReviewPatch.runtimePatchScriptSha256) {
+	throw 'The runtime transformation does not match the payload provenance.'
+}
+if ($product.version -ne '1.138.0' -or $product.commit -ne '14c79d4bed33adba68885de4a1785143a824d311') {
 	throw 'The payload metadata does not match the tested patch build.'
 }
 
 $expectedHashes = @{
+	'main.js' = '__MAIN_BUNDLE_HASH__'
 	'vs\workbench\workbench.desktop.main.js' = 'N+r2mJlf7IUR3WtjmTquJGqz62FVf8DLgk+9Nx9tvrg'
 	'vs\workbench\workbench.desktop.main.css' = 'E8EPBzg71CfVy6b9dDS5GrUwZlEbksdDe5WOIhRSnqo'
 	'vs\workbench\api\node\extensionHostProcess.js' = 'BmT31kS/ltMJC4wKLVuuUiG0rzwe+k5bwv4y464ZcDc'

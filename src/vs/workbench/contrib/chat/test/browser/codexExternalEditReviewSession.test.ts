@@ -5,6 +5,7 @@
 
 import assert from 'assert';
 import { VSBuffer } from '../../../../../base/common/buffer.js';
+import { Emitter, Event } from '../../../../../base/common/event.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { autorun } from '../../../../../base/common/observable.js';
 import { URI } from '../../../../../base/common/uri.js';
@@ -20,7 +21,7 @@ import { ITextModelService } from '../../../../../editor/common/services/resolve
 import { EditSources } from '../../../../../editor/common/textModelEditSource.js';
 import { TestEditorWorkerService } from '../../../../../editor/test/common/services/testEditorWorkerService.js';
 import { FileService } from '../../../../../platform/files/common/fileService.js';
-import { IFileService } from '../../../../../platform/files/common/files.js';
+import { FileChangesEvent, FileChangeType, IFileService } from '../../../../../platform/files/common/files.js';
 import { InMemoryFileSystemProvider } from '../../../../../platform/files/common/inMemoryFilesystemProvider.js';
 import { TestInstantiationService } from '../../../../../platform/instantiation/test/common/instantiationServiceMock.js';
 import { NullLogService } from '../../../../../platform/log/common/log.js';
@@ -117,12 +118,77 @@ suite('CodexExternalEditReviewSession', () => {
 		insta.stub(ISearchService, new class extends mock<ISearchService>() {
 			override async fileSearch() { return { results: resources.map(resource => ({ resource })), messages: [] }; }
 		});
-		// Drain the in-memory provider's batched setup notifications before taking a baseline.
-		await new Promise<void>(resolve => setTimeout(resolve, 10));
 		const capture = store.add(insta.createInstance(CodexWorkspaceEditCapture));
 		await capture.begin('thread', session);
 		return capture;
 	}
+
+	function interceptCaptureReads(afterRead: (resource: URI, readIndex: number, notify: () => void) => Promise<void> | void): void {
+		const notifications = store.add(new Emitter<FileChangesEvent>());
+		insta.stub(IFileService, 'onDidFilesChange', Event.any(files.onDidFilesChange, notifications.event));
+		let readIndex = 0;
+		insta.stub(ITextFileService, {
+			files: textFiles.files,
+			async read(resource, options) {
+				const result = await textFiles.read(resource, options);
+				await afterRead(resource, ++readIndex, () => notifications.fire(new FileChangesEvent([{ resource, type: FileChangeType.UPDATED }], false)));
+				return result;
+			},
+		});
+	}
+
+	test('workspace capture accepts delayed notifications when the baseline content is unchanged', async () => {
+		await write('before\n');
+		interceptCaptureReads((_resource, readIndex, notify) => {
+			if (readIndex === 1) { notify(); notify(); }
+		});
+		const capture = await captureWorkspace();
+		insta.stub(ITextFileService, textFiles);
+		await write('agent\n');
+		await capture.finish('thread');
+		await session.reject(resource);
+		assert.deepStrictEqual({ content: await read(), errors }, { content: 'before\n', errors: [] });
+	});
+
+	test('workspace capture accepts same-content writes during preparation', async () => {
+		await write('before\n');
+		interceptCaptureReads(async (_resource, readIndex, notify) => {
+			if (readIndex === 1) { await write('before\n'); notify(); }
+		});
+		const capture = await captureWorkspace();
+		await capture.finish('thread');
+		assert.deepStrictEqual({ pending: session.entries.get().length, errors }, { pending: 0, errors: [] });
+	});
+
+	test('workspace capture rejects actual content changes and identifies the conflicting file', async () => {
+		await write('before\n');
+		interceptCaptureReads(async (_resource, readIndex, notify) => {
+			if (readIndex === 1) { await write('saved during capture\n'); notify(); }
+		});
+		await assert.rejects(captureWorkspace(), error => error instanceof Error && error.message.includes(resource.fsPath));
+		assert.deepStrictEqual({ content: await read(), pending: session.entries.get().length, errors: errors.length }, { content: 'saved during capture\n', pending: 0, errors: 1 });
+	});
+
+	test('workspace capture preserves the original verification read error', async () => {
+		await write('before\n');
+		const failure = new Error('verification read failed');
+		interceptCaptureReads((_resource, readIndex, notify) => {
+			if (readIndex === 1) { notify(); }
+			if (readIndex === 2) { throw failure; }
+		});
+		await assert.rejects(captureWorkspace(), error => error === failure);
+		assert.strictEqual(session.entries.get().length, 0);
+	});
+
+	test('workspace capture checks notifications received while verifying the baseline', async () => {
+		await write('before\n');
+		interceptCaptureReads(async (_resource, readIndex, notify) => {
+			if (readIndex === 1) { notify(); }
+			if (readIndex === 2) { await write('saved during verification\n'); notify(); }
+		});
+		await assert.rejects(captureWorkspace(), error => error instanceof Error && error.message.includes(resource.fsPath));
+		assert.deepStrictEqual({ content: await read(), pending: session.entries.get().length, errors: errors.length }, { content: 'saved during verification\n', pending: 0, errors: 1 });
+	});
 
 	test('workspace capture exposes native diff hunks for a shell write without fileChange events', async () => {
 		await write('before\n');

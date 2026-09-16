@@ -7,9 +7,9 @@
 Applies the Codex native inline diff runtime bundles to the matching official VS Code build.
 
 .DESCRIPTION
-This script is intentionally locked to the official VS Code 1.137.0 build whose commit is
-645f29cc3176500b4b5762ba887cf2a7f0ffdf2c. It preserves the official product identity and
-user-data directories. Apply creates a complete backup before replacing five runtime
+This script is intentionally locked to the official VS Code 1.138.0 build whose commit is
+7debcd0e2acdea1c52de81bf9ee1620444407dda. It preserves the official product identity and
+user-data directories. Apply creates a complete backup before replacing six runtime
 bundles and updates only the four matching checksum values in product.json.
 
 .EXAMPLE
@@ -42,10 +42,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$SupportedVersion = '1.137.0'
-$SupportedOfficialCommit = '645f29cc3176500b4b5762ba887cf2a7f0ffdf2c'
+$SupportedVersion = '1.138.0'
+$SupportedOfficialCommit = '7debcd0e2acdea1c52de81bf9ee1620444407dda'
 $ExpectedPatchCommit = '14c79d4bed33adba68885de4a1785143a824d311'
 $BundleRelativePaths = @(
+	'main.js',
 	'vs/workbench/workbench.desktop.main.js',
 	'vs/workbench/workbench.desktop.main.css',
 	'vs/workbench/api/node/extensionHostProcess.js',
@@ -53,6 +54,7 @@ $BundleRelativePaths = @(
 	'vs/sessions/sessions.desktop.main.js'
 )
 $ExpectedPatchBundleHashes = @{
+	'main.js' = '__MAIN_BUNDLE_HASH__'
 	'vs/workbench/workbench.desktop.main.js' = 'N+r2mJlf7IUR3WtjmTquJGqz62FVf8DLgk+9Nx9tvrg'
 	'vs/workbench/workbench.desktop.main.css' = 'E8EPBzg71CfVy6b9dDS5GrUwZlEbksdDe5WOIhRSnqo'
 	'vs/workbench/api/node/extensionHostProcess.js' = 'BmT31kS/ltMJC4wKLVuuUiG0rzwe+k5bwv4y464ZcDc'
@@ -60,6 +62,7 @@ $ExpectedPatchBundleHashes = @{
 	'vs/sessions/sessions.desktop.main.js' = '5xTLkctKnqnRAK5RLTM/K2z0h3driMkMc8EZnPDqosg'
 }
 $RequiredBundleMarkers = @{
+	'main.js' = 'original-fs'
 	'vs/workbench/workbench.desktop.main.js' = 'Codex native edit review failed'
 	'vs/workbench/workbench.desktop.main.css' = 'margin:12px 12px 0 0'
 	'vs/workbench/api/node/extensionHostProcess.js' = 'Codex native edit review failed'

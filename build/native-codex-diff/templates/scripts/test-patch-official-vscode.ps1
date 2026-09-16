@@ -54,8 +54,8 @@ function Resolve-OfficialAppDir {
 
 			try {
 				$product = Get-Content -LiteralPath $productPath -Raw | ConvertFrom-Json
-				if ($product.version -eq '1.137.0' -and
-					$product.commit -eq '645f29cc3176500b4b5762ba887cf2a7f0ffdf2c' -and
+				if ($product.version -eq '1.138.0' -and
+					$product.commit -eq '7debcd0e2acdea1c52de81bf9ee1620444407dda' -and
 					$product.applicationName -eq 'code') {
 					$matches += [IO.Path]::GetFullPath($appDir)
 				}
@@ -84,6 +84,7 @@ if ([string]::IsNullOrWhiteSpace($OfficialAppDir)) {
 }
 
 $bundleRelativePaths = @(
+	'main.js',
 	'vs/workbench/workbench.desktop.main.js',
 	'vs/workbench/workbench.desktop.main.css',
 	'vs/workbench/api/node/extensionHostProcess.js',
@@ -98,7 +99,7 @@ if (-not $fixtureRoot.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgno
 }
 
 $fixtureInstallDir = Join-Path $fixtureRoot 'official'
-$fixtureAppDir = Join-Path $fixtureInstallDir '645f29cc31\resources\app'
+$fixtureAppDir = Join-Path $fixtureInstallDir '7debcd0e2a\resources\app'
 $fixtureOutDir = Join-Path $fixtureAppDir 'out'
 $fixtureBackupRoot = Join-Path $fixtureRoot 'backups'
 $originalHashes = @{}
@@ -142,6 +143,26 @@ try {
 	$originalHashes['product.json'] = (Get-FileHash -LiteralPath $productFixturePath -Algorithm SHA256).Hash
 
 	Write-Host "Fixture: $fixtureRoot"
+	foreach ($field in @('version', 'commit')) {
+		$unsupportedProduct = $productRaw | ConvertFrom-Json
+		$unsupportedProduct.$field = if ($field -eq 'version') { '0.0.0' } else { '0000000000000000000000000000000000000000' }
+		[IO.File]::WriteAllText($productFixturePath, ($unsupportedProduct | ConvertTo-Json -Depth 100), $utf8WithoutBom)
+		$rejected = $false
+		try {
+			& $PatchScript -Action Apply -OfficialInstallDir $fixtureInstallDir -PatchBuildDir $PatchBuildDir -BackupRoot $fixtureBackupRoot
+		} catch {
+			if (-not $_.Exception.Message.Contains('The exact supported official VS Code build was not found')) { throw }
+			$rejected = $true
+		}
+		if (-not $rejected) { throw "Unsupported $field was not rejected." }
+		foreach ($relativePath in $bundleRelativePaths) {
+			if ((Get-FileHash -LiteralPath (Join-Path $fixtureOutDir $relativePath) -Algorithm SHA256).Hash -ne $originalHashes[$relativePath]) {
+				throw "Unsupported $field modified a runtime bundle: $relativePath"
+			}
+		}
+		[IO.File]::WriteAllText($productFixturePath, $productRaw, $utf8WithoutBom)
+	}
+	Write-Host 'Unsupported version and commit rejection: PASS'
 	& $PatchScript -Action Apply -OfficialInstallDir $fixtureInstallDir -PatchBuildDir $PatchBuildDir -BackupRoot $fixtureBackupRoot
 	& $PatchScript -Action Verify -OfficialInstallDir $fixtureInstallDir -PatchBuildDir $PatchBuildDir -BackupRoot $fixtureBackupRoot
 	$patchedProduct = Get-Content -LiteralPath $productFixturePath -Raw | ConvertFrom-Json

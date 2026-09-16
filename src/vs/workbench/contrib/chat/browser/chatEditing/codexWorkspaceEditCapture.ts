@@ -99,10 +99,23 @@ export class CodexWorkspaceEditCapture extends Disposable {
 					}
 				})));
 				for (const result of results) { if (result.status === 'rejected') { throw result.reason; } }
-				if (this._store.isDisposed || [...capture.changed].some(resource => capture.before.has(resource))) {
-					throw new Error(localize('codexCaptureChanged', "Workspace files changed while preparing the Codex review baseline. Start the turn again after saving your changes."));
+				// Watcher events can arrive after a save was already included in the snapshot,
+				// or describe metadata/same-content writes. Verify content before rejecting it.
+				while (capture.changed.size > 0 && !this._store.isDisposed) {
+					const changedResources = [...capture.changed].filter(resource => capture.before.has(resource));
+					capture.changed.clear();
+					const verification = await Promise.allSettled(changedResources.map(resource => limiter.queue(async () => {
+						if (await this._readText(resource) !== capture.before.get(resource)) {
+							throw new Error(localize('codexCaptureChangedFile', "The contents of {0} changed while preparing the Codex review baseline. Save your changes before starting the turn again.", resource.fsPath));
+						}
+					})));
+					for (const result of verification) { if (result.status === 'rejected') { throw result.reason; } }
+					// Drain events received during verification against the same immutable baseline.
+					// A content mismatch or read failure aborts immediately; neither is retried.
 				}
-				capture.changed.clear();
+				if (this._store.isDisposed || this._active !== capture) {
+					throw new Error(localize('codexCaptureDisposed', "Workspace review was disposed while preparing the baseline."));
+				}
 				capture.ready = true;
 				this._log.info(`[CodexReview] Captured ${capture.before.size} text files for ${threadId}`);
 			} catch (error) {

@@ -1,6 +1,6 @@
 {
-  "version": "1.137.0",
-  "officialCommit": "645f29cc3176500b4b5762ba887cf2a7f0ffdf2c",
+  "version": "1.138.0",
+  "officialCommit": "7debcd0e2acdea1c52de81bf9ee1620444407dda",
   "developmentBase": "6a932e0f957fb194b0ffa81b8bb51080aa274147",
   "modifiedFiles": [
     "build/next/index.ts",
@@ -15,7 +15,7 @@
     "src/vs/workbench/contrib/chat/browser/chatEditing/media/chatEditingEditorOverlay.css"
   ],
   "compatibilityPatches": {
-    "build/next/index.ts": "compatibility/build-1.137.0.patch"
+    "build/next/index.ts": "compatibility/build-1.138.0.patch"
   },
   "newFiles": [
     "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingChangeNavigation.ts",
@@ -27,6 +27,7 @@
     "src/vs/workbench/contrib/chat/test/browser/codexExternalEditReviewSession.test.ts"
   ],
   "bundles": [
+    "main.js",
     "vs/workbench/workbench.desktop.main.js",
     "vs/workbench/workbench.desktop.main.css",
     "vs/workbench/api/node/extensionHostProcess.js",

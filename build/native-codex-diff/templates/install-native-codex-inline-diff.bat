@@ -2,7 +2,7 @@
 rem Copyright (c) Microsoft Corporation. All rights reserved.
 rem Licensed under the MIT License. See License.txt in the project root.
 setlocal EnableExtensions DisableDelayedExpansion
-title Install Codex Native Inline Diff for VS Code 1.137.0
+title Install Codex Native Inline Diff for VS Code 1.138.0
 
 rem Prevent Windows PowerShell 5.1 from inheriting incompatible PowerShell 7 module paths.
 set "PSModulePath="
@@ -49,7 +49,7 @@ if not "%~1"=="" goto usage
 
 :apply
 echo ============================================================
-echo Codex Native Inline Diff patch for official VS Code 1.137.0
+echo Codex Native Inline Diff patch for official VS Code 1.138.0
 echo ============================================================
 echo.
 echo Save all files and fully exit every official VS Code window.
