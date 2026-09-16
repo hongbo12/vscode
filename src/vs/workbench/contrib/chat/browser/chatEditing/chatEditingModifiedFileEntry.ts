@@ -66,6 +66,7 @@ export abstract class AbstractChatEditingModifiedFileEntry extends Disposable im
 	 * When true, file system changes should be treated as agent edits, not user edits.
 	 */
 	protected _isExternalEditInProgress = false;
+	protected _externalEditsOnlyFromDisk = false;
 
 	protected readonly _lastModifyingResponseObs = observableValueOpts<IChatResponseModel | undefined>({ equalsFn: (a, b) => a?.requestId === b?.requestId }, undefined);
 	readonly lastModifyingResponse: IObservable<IChatResponseModel | undefined> = this._lastModifyingResponseObs;
@@ -409,8 +410,9 @@ export abstract class AbstractChatEditingModifiedFileEntry extends Disposable im
 	 * Marks the start of an external edit operation.
 	 * File system changes will be treated as agent edits until stopExternalEdit is called.
 	 */
-	startExternalEdit(): void {
+	startExternalEdit(onlyDiskChanges = false): void {
 		this._isExternalEditInProgress = true;
+		this._externalEditsOnlyFromDisk = onlyDiskChanges;
 	}
 
 	/**

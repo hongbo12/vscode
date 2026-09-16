@@ -24,7 +24,7 @@ import { bundleDevTunnelsWeb } from './devTunnelsWeb.ts';
 import { copyFile, mapWithConcurrency, MAX_CONCURRENT_FILE_OPERATIONS, transpileFile } from './transpile.ts';
 import { copyResources, type BuildTarget } from './resources.ts';
 import { optimizeSvgFiles } from './svg.ts';
-import { getBundleOptions } from './bundle.ts';
+import { getBootstrapBundleOptions, getBundleOptions } from './bundle.ts';
 import { compileStandaloneFiles } from './standalone.ts';
 
 const globAsync = promisify(glob);
@@ -53,6 +53,7 @@ const options = {
 	watch: process.argv.includes('--watch'),
 	minify: process.argv.includes('--minify'),
 	nls: process.argv.includes('--nls'),
+	nlsReference: getArgValue('--nls-reference'),
 	manglePrivates: process.argv.includes('--mangle-privates'),
 	excludeTests: process.argv.includes('--exclude-tests'),
 	force: process.argv.includes('--force'),
@@ -491,7 +492,7 @@ async function bundle(outDir: string, doMinify: boolean, doNls: boolean, doMangl
 
 	// Create shared NLS collector (only used if doNls is true)
 	const nlsCollector = createNLSCollector();
-	const preserveEnglish = false; // Production mode: replace messages with null
+	const preserveEnglish = !!options.nlsReference;
 
 	// Get entry points based on target
 	const allEntryPoints = getEntryPointsForTarget(target);
@@ -566,7 +567,7 @@ async function bundle(outDir: string, doMinify: boolean, doNls: boolean, doMangl
 		}
 
 		const result = await esbuild.build({
-			...getBundleOptions(doMinify, 'node'),
+			...getBootstrapBundleOptions(doMinify, target, entry),
 			entryPoints: [entryPath],
 			outfile: outPath,
 			plugins: bootstrapPlugins,
@@ -582,7 +583,11 @@ async function bundle(outDir: string, doMinify: boolean, doNls: boolean, doMangl
 		const nlsResult = await finalizeNLS(
 			nlsCollector,
 			path.join(REPO_ROOT, outDir),
-			[path.join(REPO_ROOT, 'out-build')]
+			[path.join(REPO_ROOT, 'out-build')],
+			options.nlsReference ? {
+				keys: JSON.parse(await fs.promises.readFile(path.join(options.nlsReference, 'nls.keys.json'), 'utf8')),
+				messages: JSON.parse(await fs.promises.readFile(path.join(options.nlsReference, 'nls.messages.json'), 'utf8')),
+			} : undefined
 		);
 		indexMap = nlsResult.indexMap;
 	}

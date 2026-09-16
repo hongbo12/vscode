@@ -3929,7 +3929,17 @@ export interface IChatSessionItemsChange {
 	readonly removed: readonly UriComponents[];
 }
 
+export interface ICodexExternalFileChangeDto {
+	readonly resource: UriComponents;
+	readonly kind: 'add' | 'delete' | 'update';
+	readonly moveResource?: UriComponents;
+}
+
 export interface MainThreadChatSessionsShape extends IDisposable {
+	$startCodexWorkspaceReview(threadId: string): Promise<void>;
+	$endCodexWorkspaceReview(threadId: string): Promise<void>;
+	$startCodexExternalEdits(operationId: string, threadId: string, changes: readonly ICodexExternalFileChangeDto[]): Promise<void>;
+	$endCodexExternalEdits(operationId: string, threadId: string): Promise<void>;
 	$registerChatSessionItemController(controllerHandle: number, chatSessionType: string, supportsResolve: boolean): void;
 	$updateChatSessionItemControllerCapabilities(controllerHandle: number, supportsResolve: boolean): void;
 	$unregisterChatSessionItemController(controllerHandle: number): void;

@@ -5,7 +5,7 @@
 
 import './media/chatEditingEditorOverlay.css';
 import { combinedDisposable, Disposable, DisposableMap, DisposableStore, MutableDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
-import { autorun, derived, derivedOpts, IObservable, observableFromEvent, observableSignalFromEvent, observableValue, transaction } from '../../../../../base/common/observable.js';
+import { autorun, autorunWithStore, derived, derivedOpts, IObservable, observableFromEvent, observableSignalFromEvent, observableValue, transaction } from '../../../../../base/common/observable.js';
 import { HiddenItemStrategy, MenuWorkbenchToolBar } from '../../../../../platform/actions/browser/toolbar.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IChatEditReviewSession, IChatEditingService, IModifiedFileEntry, ModifiedFileEntryState } from '../../common/editing/chatEditingService.js';
@@ -30,6 +30,11 @@ import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { IKeybindingService } from '../../../../../platform/keybinding/common/keybinding.js';
 import { IWorkbenchEnvironmentService } from '../../../../services/environment/common/environmentService.js';
 import { getCodeEditor } from '../../../../../editor/browser/editorBrowser.js';
+import { Button } from '../../../../../base/browser/ui/button/button.js';
+import { onUnexpectedError } from '../../../../../base/common/errors.js';
+import { defaultButtonStyles } from '../../../../../platform/theme/browser/defaultStyles.js';
+import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { getChatEditingChangeNavigation, revealChatEditingChange } from './chatEditingChangeNavigation.js';
 
 export class ChatEditingAcceptRejectActionViewItem extends ActionViewItem {
 
@@ -287,6 +292,7 @@ class ChatEditingOverlayController {
 		group: IEditorGroup,
 		@IInstantiationService instaService: IInstantiationService,
 		@IChatEditingService chatEditingService: IChatEditingService,
+		@IEditorService editorService: IEditorService,
 	) {
 
 		this._domNode.classList.add('chat-editing-editor-overlay');
@@ -299,21 +305,67 @@ class ChatEditingOverlayController {
 		this._domNode.appendChild(widget.getDomNode());
 		this._store.add(toDisposable(() => this._domNode.remove()));
 		this._store.add(widget);
-
-		const show = () => {
-			if (!container.contains(this._domNode)) {
-				container.appendChild(this._domNode);
+		const navigationNode = document.createElement('div');
+		navigationNode.classList.add('chat-editor-overlay-widget', 'chat-editor-change-navigation');
+		const navigationButton = this._store.add(new Button(navigationNode, { ...defaultButtonStyles }));
+		// allow-any-unicode-next-line
+		navigationButton.label = localize('chatEditing.goToChange', "跳转到修改");
+		let navigationTarget: ReturnType<typeof getChatEditingChangeNavigation>;
+		this._store.add(navigationButton.onDidClick(() => {
+			const target = navigationTarget;
+			if (!target) {
+				return;
 			}
-		};
+			void revealChatEditingChange(target, editorService, group.id).catch(onUnexpectedError);
+		}));
 
-		const hide = () => {
-			if (container.contains(this._domNode)) {
-				widget.hide();
+		const updateContainer = () => {
+			if (this._domNode.childElementCount > 0) {
+				if (!container.contains(this._domNode)) {
+					container.appendChild(this._domNode);
+				}
+			} else {
 				this._domNode.remove();
 			}
 		};
 
+		const show = () => {
+			this._domNode.appendChild(widget.getDomNode());
+			updateContainer();
+		};
+
+		const hide = () => {
+			widget.hide();
+			widget.getDomNode().remove();
+			updateContainer();
+		};
+
 		const activeEditorSignal = observableSignalFromEvent(this, Event.any(group.onDidActiveEditorChange, group.onDidModelChange));
+
+		this._store.add(autorunWithStore((reader, store) => {
+			activeEditorSignal.read(reader);
+			navigationTarget = undefined;
+			navigationNode.remove();
+			updateContainer();
+			const editor = getCodeEditor(group.activeEditorPane?.getControl());
+			if (!editor) {
+				return;
+			}
+			const viewportSignal = observableSignalFromEvent(this, Event.any(editor.onDidScrollChange, editor.onDidLayoutChange, editor.onDidChangeModel, editor.onDidChangeHiddenAreas, editor.onDidChangeModelContent));
+			store.add(autorun(r => {
+				viewportSignal.read(r);
+				const model = editor.getModel();
+				navigationTarget = model ? getChatEditingChangeNavigation(
+					chatEditingService.editingSessionsObs.read(r), model.uri, editor.getVisibleRanges(), model.getLineCount(), r,
+				) : undefined;
+				if (navigationTarget && !navigationTarget.visible) {
+					this._domNode.prepend(navigationNode);
+				} else {
+					navigationNode.remove();
+				}
+				updateContainer();
+			}));
+		}));
 
 		const activeUriObs = derivedOpts({ equalsFn: isEqual }, r => {
 
@@ -345,7 +397,7 @@ class ChatEditingOverlayController {
 					continue;
 				}
 				const entry = session.readEntry(uri, r);
-				if (entry) {
+				if (entry?.state.read(r) === ModifiedFileEntryState.Modified) {
 					return { session, entry };
 				}
 			}

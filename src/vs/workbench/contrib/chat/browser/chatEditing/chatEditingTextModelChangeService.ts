@@ -80,7 +80,7 @@ export class ChatEditingTextModelChangeService extends Disposable {
 	public get allEditsAreFromUs() {
 		return this._allEditsAreFromUs;
 	}
-	private _isExternalEditInProgress: (() => boolean) | undefined;
+	private _isExternalEditInProgress: ((event: IModelContentChangedEvent) => boolean) | undefined;
 	private _diffOperation: Promise<IDocumentDiff | undefined> | undefined;
 	private _diffOperationIds: number = 0;
 
@@ -126,7 +126,7 @@ export class ChatEditingTextModelChangeService extends Disposable {
 		private readonly originalModel: ITextModel,
 		private readonly modifiedModel: ITextModel,
 		private readonly state: IObservable<ModifiedFileEntryState>,
-		isExternalEditInProgress: (() => boolean) | undefined,
+		isExternalEditInProgress: ((event: IModelContentChangedEvent) => boolean) | undefined,
 		@IEditorWorkerService private readonly _editorWorkerService: IEditorWorkerService,
 		@IAccessibilitySignalService private readonly _accessibilitySignalService: IAccessibilitySignalService,
 	) {
@@ -357,7 +357,7 @@ export class ChatEditingTextModelChangeService extends Disposable {
 
 	private _mirrorEdits(event: IModelContentChangedEvent) {
 		const edit = offsetEditFromContentChanges(event.changes);
-		const isExternalEdit = this._isExternalEditInProgress?.();
+		const isExternalEdit = this._isExternalEditInProgress?.(event);
 
 		if (this._isEditFromUs || isExternalEdit) {
 			const e_sum = this._originalToModifiedEdit;

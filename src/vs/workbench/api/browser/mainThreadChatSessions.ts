@@ -23,6 +23,9 @@ import { ILogService } from '../../../platform/log/common/log.js';
 import { hasValidDiff, IAgentSession } from '../../contrib/chat/browser/agentSessions/agentSessionsModel.js';
 import { IAgentSessionsService } from '../../contrib/chat/browser/agentSessions/agentSessionsService.js';
 import { IChatWidgetService, isIChatViewViewContext } from '../../contrib/chat/browser/chat.js';
+import { CodexExternalEditReviewSession, ICodexExternalEditResource } from '../../contrib/chat/browser/chatEditing/codexExternalEditReviewSession.js';
+import { CodexWorkspaceEditCapture } from '../../contrib/chat/browser/chatEditing/codexWorkspaceEditCapture.js';
+import { IChatEditingService } from '../../contrib/chat/common/editing/chatEditingService.js';
 import { getInProgressSessionDescription } from '../../contrib/chat/browser/chatSessions/chatSessionDescription.js';
 import { getSessionStatusForModel } from '../../contrib/chat/browser/chatSessions/chatSessions.contribution.js';
 import { IChatEditorOptions } from '../../contrib/chat/browser/widgetHosts/editor/chatEditor.js';
@@ -41,7 +44,7 @@ import { IEditorGroupsService } from '../../services/editor/common/editorGroupsS
 import { IEditorService } from '../../services/editor/common/editorService.js';
 import { extHostNamedCustomer, IExtHostContext } from '../../services/extensions/common/extHostCustomers.js';
 import { Dto } from '../../services/extensions/common/proxyIdentifier.js';
-import { ChatSessionContentContextDto, ExtHostChatSessionsShape, ExtHostContext, IChatProgressDto, IChatSessionHistoryItemDto, IChatSessionItemsChange, IChatSessionRequestHistoryItemDto, MainContext, MainThreadChatSessionsShape } from '../common/extHost.protocol.js';
+import { ChatSessionContentContextDto, ExtHostChatSessionsShape, ExtHostContext, ICodexExternalFileChangeDto, IChatProgressDto, IChatSessionHistoryItemDto, IChatSessionItemsChange, IChatSessionRequestHistoryItemDto, MainContext, MainThreadChatSessionsShape } from '../common/extHost.protocol.js';
 
 function stringOrMarkdownEqual(a: string | IMarkdownString | undefined, b: string | IMarkdownString | undefined): boolean {
 	if (a === b) {
@@ -687,6 +690,8 @@ class MainThreadChatSessionItem implements IChatSessionItem {
 
 @extHostNamedCustomer(MainContext.MainThreadChatSessions)
 export class MainThreadChatSessions extends Disposable implements MainThreadChatSessionsShape {
+	private readonly _codexWorkspaceCapture: CodexWorkspaceEditCapture;
+	private readonly _codexExternalEditSessions = this._register(new DisposableMap<string, DisposableStore & { session: CodexExternalEditReviewSession }>());
 	private readonly _itemControllerRegistrations = this._register(new DisposableMap<number, IDisposable & {
 		readonly chatSessionType: string;
 		readonly controller: MainThreadChatSessionItemController;
@@ -713,10 +718,12 @@ export class MainThreadChatSessions extends Disposable implements MainThreadChat
 		@IEditorGroupsService private readonly editorGroupService: IEditorGroupsService,
 		@ILogService private readonly _logService: ILogService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
+		@IChatEditingService private readonly _chatEditingService: IChatEditingService,
 	) {
 		super();
 
 		this._proxy = this._extHostContext.getProxy(ExtHostContext.ExtHostChatSessions);
+		this._codexWorkspaceCapture = this._register(this._instantiationService.createInstance(CodexWorkspaceEditCapture));
 
 		this._register(this._chatSessionsService.onDidChangeSessionOptions(({ sessionResource, updates }) => {
 			const sessionType = getChatSessionType(sessionResource);
@@ -736,6 +743,42 @@ export class MainThreadChatSessions extends Disposable implements MainThreadChat
 				}
 			}
 		}));
+	}
+
+	private _getCodexReviewSession(threadId: string): CodexExternalEditReviewSession {
+		let registration = this._codexExternalEditSessions.get(threadId);
+		if (!registration) {
+			const store = new DisposableStore();
+			const resource = URI.from({ scheme: 'openai-codex-review', path: `/${encodeURIComponent(threadId)}` });
+			const session = store.add(this._instantiationService.createInstance(CodexExternalEditReviewSession, resource));
+			store.add(this._chatEditingService.registerEditReviewSession(session));
+			registration = Object.assign(store, { session });
+			this._codexExternalEditSessions.set(threadId, registration);
+		}
+		return registration.session;
+	}
+
+	async $startCodexWorkspaceReview(threadId: string): Promise<void> {
+		await this._codexWorkspaceCapture.begin(threadId, this._getCodexReviewSession(threadId));
+	}
+
+	async $endCodexWorkspaceReview(threadId: string): Promise<void> {
+		await this._codexWorkspaceCapture.finish(threadId);
+	}
+
+	async $startCodexExternalEdits(operationId: string, threadId: string, changes: readonly ICodexExternalFileChangeDto[]): Promise<void> {
+		await this._getCodexReviewSession(threadId).begin(operationId, changes.flatMap(change => this._resolveCodexExternalEdit(change)));
+	}
+
+	async $endCodexExternalEdits(operationId: string, threadId: string): Promise<void> {
+		await this._codexExternalEditSessions.get(threadId)?.session.end(operationId);
+	}
+
+	private _resolveCodexExternalEdit(change: ICodexExternalFileChangeDto): readonly ICodexExternalEditResource[] {
+		const resource = URI.revive(change.resource);
+		return change.kind === 'update' && change.moveResource
+			? [{ resource, kind: 'delete' }, { resource: URI.revive(change.moveResource), kind: 'add' }]
+			: [{ resource, kind: change.kind }];
 	}
 
 	private _getHandleForSessionType(chatSessionType: string): number | undefined {

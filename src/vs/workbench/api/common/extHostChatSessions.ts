@@ -26,6 +26,7 @@ import { IChatAgentRequest, IChatAgentResult } from '../../contrib/chat/common/p
 import { Proxied } from '../../services/extensions/common/proxyIdentifier.js';
 import { ChatSessionContentContextDto, ExtHostChatSessionsShape, IChatAgentProgressShape, IChatNewSessionRequestDto, IChatSessionDto, IChatSessionProviderOptions, IChatSessionRequestHistoryItemDto, MainContext, MainThreadChatSessionsShape } from './extHost.protocol.js';
 import { ChatAgentResponseStream } from './extHostChatAgents2.js';
+import { installCodexExternalEditBridge, resolveCodexEditResource } from './codexExternalEditBridge.js';
 import { CommandsConverter, ExtHostCommands } from './extHostCommands.js';
 import { ExtHostLanguageModels } from './extHostLanguageModels.js';
 import { IExtHostRpcService } from './extHostRpcService.js';
@@ -431,6 +432,20 @@ export class ExtHostChatSessions extends Disposable implements ExtHostChatSessio
 		// The legacy provider api is implemented using the new controller API on the backend
 		const controllerHandle = this._itemControllerHandlePool++;
 		const disposables = new DisposableStore();
+		if (extension.identifier.value.toLowerCase() === 'openai.chatgpt' && chatSessionType === 'openai-codex') {
+			disposables.add(installCodexExternalEditBridge(provider, {
+				beginTurn: threadId => this._proxy.$startCodexWorkspaceReview(threadId),
+				endTurn: threadId => this._proxy.$endCodexWorkspaceReview(threadId),
+				begin: edit => this._proxy.$startCodexExternalEdits(edit.operationId, edit.threadId, edit.changes.map(change => ({
+					resource: resolveCodexEditResource(change.path, edit.cwd),
+					kind: change.kind,
+					moveResource: change.movePath ? resolveCodexEditResource(change.movePath, edit.cwd) : undefined,
+				}))),
+				end: edit => this._proxy.$endCodexExternalEdits(edit.operationId, edit.threadId),
+				onError: error => this._logService.error('Codex native edit review failed', error),
+			}));
+			this._logService.info('[CodexReview] Workspace capture bridge installed');
+		}
 
 		const onDidChangeChatSessionItemStateEmitter = disposables.add(new Emitter<vscode.ChatSessionItem>());
 

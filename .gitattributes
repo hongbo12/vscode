@@ -9,3 +9,6 @@ ThirdPartyNotices.txt eol=crlf
 *.sh eol=lf
 *.rtf -text
 **/*.json linguist-language=jsonc
+
+# 补丁上下文行需要保留前导空格、空白行标记及源码制表符。
+build/native-codex-diff/compatibility/*.patch whitespace=-space-before-tab,-blank-at-eol

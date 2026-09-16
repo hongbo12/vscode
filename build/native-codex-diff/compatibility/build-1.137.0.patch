@@ -1,0 +1,43 @@
+diff --git a/build/next/index.ts b/build/next/index.ts
+index defbaa1b9dd..e9db0cce652 100644
+--- a/build/next/index.ts
++++ b/build/next/index.ts
+@@ -48,6 +48,7 @@ const options = {
+ 	watch: process.argv.includes('--watch'),
+ 	minify: process.argv.includes('--minify'),
+ 	nls: process.argv.includes('--nls'),
++	nlsReference: getArgValue('--nls-reference'),
+ 	manglePrivates: process.argv.includes('--mangle-privates'),
+ 	excludeTests: process.argv.includes('--exclude-tests'),
+ 	force: process.argv.includes('--force'),
+@@ -756,7 +757,7 @@ ${tslib}`,
+ 
+ 	// Create shared NLS collector (only used if doNls is true)
+ 	const nlsCollector = createNLSCollector();
+-	const preserveEnglish = false; // Production mode: replace messages with null
++	const preserveEnglish = !!options.nlsReference;
+ 
+ 	// Get entry points based on target
+ 	const allEntryPoints = getEntryPointsForTarget(target);
+@@ -859,6 +860,8 @@ ${tslib}`,
+ 			treeShaking: true,
+ 			banner,
+ 			plugins: bootstrapPlugins,
++			// Main imports must bypass archive parsing before its runtime hook is installed.
++			alias: target === 'desktop' && entry === 'main' ? { fs: 'original-fs' } : undefined,
+ 			write: false, // Don't write yet, we need to post-process
+ 			logLevel: 'warning',
+ 			logOverride: {
+@@ -877,7 +880,11 @@ ${tslib}`,
+ 		const nlsResult = await finalizeNLS(
+ 			nlsCollector,
+ 			path.join(REPO_ROOT, outDir),
+-			[path.join(REPO_ROOT, 'out-build')]
++			[path.join(REPO_ROOT, 'out-build')],
++			options.nlsReference ? {
++				keys: JSON.parse(await fs.promises.readFile(path.join(options.nlsReference, 'nls.keys.json'), 'utf8')),
++				messages: JSON.parse(await fs.promises.readFile(path.join(options.nlsReference, 'nls.messages.json'), 'utf8')),
++			} : undefined
+ 		);
+ 		indexMap = nlsResult.indexMap;
+ 	}

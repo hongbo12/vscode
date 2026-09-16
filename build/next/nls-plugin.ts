@@ -67,14 +67,15 @@ export function createNLSCollector(): NLSCollector {
 export async function finalizeNLS(
 	collector: NLSCollector,
 	outDir: string,
-	alsoWriteTo?: string[]
+	alsoWriteTo?: string[],
+	reference?: { keys: [string, string[]][]; messages: string[] }
 ): Promise<{ indexMap: Map<string, number>; messageCount: number }> {
 	if (collector.entries.size === 0) {
 		return { indexMap: new Map(), messageCount: 0 };
 	}
 
 	// Sort entries by moduleId, then by key for stable indices
-	const sortedEntries = [...collector.entries.values()].sort((a, b) => {
+	let sortedEntries = [...collector.entries.values()].sort((a, b) => {
 		const aKey = typeof a.key === 'string' ? a.key : a.key.key;
 		const bKey = typeof b.key === 'string' ? b.key : b.key.key;
 		const moduleCompare = a.moduleId.localeCompare(b.moduleId);
@@ -83,6 +84,26 @@ export async function finalizeNLS(
 		}
 		return aKey.localeCompare(bKey);
 	});
+	if (reference) {
+		const byKey = new Map(sortedEntries.map(entry => [JSON.stringify([entry.moduleId, typeof entry.key === 'string' ? entry.key : entry.key.key]), entry]));
+		const ordered: NLSEntry[] = [];
+		for (const [moduleId, keys] of reference.keys) {
+			for (const key of keys) {
+				const id = JSON.stringify([moduleId, key]);
+				const entry = byKey.get(id);
+				const message = reference.messages[ordered.length];
+				if (typeof message !== 'string' || (entry && entry.message !== message)) {
+					throw new Error(`Incompatible localization reference: ${id}`);
+				}
+				ordered.push(entry ?? { moduleId, key, message, placeholder: `%%REFERENCE:${ordered.length}%%` });
+				byKey.delete(id);
+			}
+		}
+		if (ordered.length !== reference.messages.length) {
+			throw new Error('Localization reference keys and messages have different lengths.');
+		}
+		sortedEntries = [...ordered, ...byKey.values()];
+	}
 
 	// Create index map
 	const indexMap = new Map<string, number>();
@@ -108,8 +129,14 @@ export async function finalizeNLS(
 
 	// nls.keys.json: [["moduleId", ["key1", "key2"]], ...]
 	const nlsKeysJson: [string, string[]][] = [];
-	for (const [moduleId, keys] of moduleToKeys) {
-		nlsKeysJson.push([moduleId, keys.map(k => typeof k === 'string' ? k : k.key)]);
+	for (const entry of sortedEntries) {
+		const last = nlsKeysJson.at(-1);
+		const key = typeof entry.key === 'string' ? entry.key : entry.key.key;
+		if (last?.[0] === entry.moduleId) {
+			last[1].push(key);
+		} else {
+			nlsKeysJson.push([entry.moduleId, [key]]);
+		}
 	}
 
 	// nls.metadata.json: { keys: {...}, messages: {...} }

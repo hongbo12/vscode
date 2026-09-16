@@ -4,10 +4,20 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type * as esbuild from 'esbuild';
+import type { BuildTarget } from './resources.ts';
 
 const fileHeader = `/*!--------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  *--------------------------------------------------------*/`;
+
+export function getBootstrapBundleOptions(minify: boolean, target: BuildTarget, entry: string): esbuild.BuildOptions {
+	return {
+		...getBundleOptions(minify, 'node'),
+		// Main's static imports are resolved before bootstrap-esm installs its fs hook.
+		// Other entry points can run on plain Node.js, where original-fs is unavailable.
+		alias: target === 'desktop' && entry === 'main' ? { fs: 'original-fs' } : undefined,
+	};
+}
 
 export function getBundleOptions(minify: boolean, platform: 'neutral' | 'node'): esbuild.BuildOptions {
 	return {

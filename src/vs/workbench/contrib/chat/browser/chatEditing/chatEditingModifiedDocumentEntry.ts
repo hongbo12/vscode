@@ -132,7 +132,8 @@ export class ChatEditingModifiedDocumentEntry extends AbstractChatEditingModifie
 		);
 
 		this._textModelChangeService = this._register(instantiationService.createInstance(ChatEditingTextModelChangeService,
-			this.originalModel, this.modifiedModel, this._stateObs, () => this._isExternalEditInProgress));
+			this.originalModel, this.modifiedModel, this._stateObs, event => this._isExternalEditInProgress &&
+				(!this._externalEditsOnlyFromDisk || (event.detailedReasons.length > 0 && event.detailedReasons.every(reason => reason.metadata.source === 'reloadFromDisk')))));
 
 		this._register(this._textModelChangeService.onDidAcceptOrRejectAllHunks(action => {
 			this._stateObs.set(action, undefined);
@@ -341,7 +342,7 @@ export class ChatEditingModifiedDocumentEntry extends AbstractChatEditingModifie
 		}
 	}
 
-	async revertToDisk(): Promise<void> {
+	async revertToDisk(preserveDirty = false): Promise<void> {
 		if (this.modifiedModel.uri.scheme === Schemas.untitled) {
 			return;
 		}
@@ -349,6 +350,9 @@ export class ChatEditingModifiedDocumentEntry extends AbstractChatEditingModifie
 		// Revert to reload from disk, ensuring in-memory model matches disk
 		const fileModel = this._textFileService.files.get(this.modifiedModel.uri);
 		if (fileModel && !fileModel.isDisposed()) {
+			if (preserveDirty && fileModel.isDirty()) {
+				throw new Error(`Unsaved changes prevent reloading external edits: ${this.modifiedURI}`);
+			}
 			await fileModel.revert({ soft: false });
 		}
 	}
