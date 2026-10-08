@@ -1,22 +1,25 @@
 {
-  "version": "1.138.0",
-  "officialCommit": "7debcd0e2acdea1c52de81bf9ee1620444407dda",
+  "version": "1.141.0",
+  "officialCommit": "2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
   "developmentBase": "6a932e0f957fb194b0ffa81b8bb51080aa274147",
   "modifiedFiles": [
     "build/next/index.ts",
+    "build/next/bundle.ts",
     "build/next/nls-plugin.ts",
     "src/vs/workbench/api/browser/mainThreadChatSessions.ts",
     "src/vs/workbench/api/common/extHost.protocol.ts",
     "src/vs/workbench/api/common/extHostChatSessions.ts",
     "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingEditorOverlay.ts",
+    "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingEditorActions.ts",
+    "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingEditorContextKeys.ts",
+    "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingDeletedFileEntry.ts",
+    "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingTextModelContentProviders.ts",
+    "src/vs/workbench/contrib/chat/common/editing/chatEditingService.ts",
     "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingModifiedDocumentEntry.ts",
     "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingModifiedFileEntry.ts",
     "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingTextModelChangeService.ts",
     "src/vs/workbench/contrib/chat/browser/chatEditing/media/chatEditingEditorOverlay.css"
   ],
-  "compatibilityPatches": {
-    "build/next/index.ts": "compatibility/build-1.138.0.patch"
-  },
   "newFiles": [
     "src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingChangeNavigation.ts",
     "src/vs/workbench/contrib/chat/test/browser/chatEditingChangeNavigation.test.ts",

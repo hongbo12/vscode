@@ -7,7 +7,7 @@ import assert from 'assert';
 import { VSBuffer } from '../../../../../base/common/buffer.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
-import { autorun } from '../../../../../base/common/observable.js';
+import { autorun, constObservable } from '../../../../../base/common/observable.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { mock } from '../../../../../base/test/common/mock.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
@@ -27,6 +27,8 @@ import { TestInstantiationService } from '../../../../../platform/instantiation/
 import { NullLogService } from '../../../../../platform/log/common/log.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { TestNotificationService } from '../../../../../platform/notification/test/common/testNotificationService.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { TestConfigurationService } from '../../../../../platform/configuration/test/common/testConfigurationService.js';
 import { IWorkspaceContextService, Workspace, toWorkspaceFolder } from '../../../../../platform/workspace/common/workspace.js';
 import { ISearchService } from '../../../../services/search/common/search.js';
 import { TestContextService } from '../../../../test/common/workbenchTestServices.js';
@@ -39,6 +41,12 @@ import { ChatEditingTextModelContentProvider } from '../../browser/chatEditing/c
 import { CodexExternalEditReviewSession } from '../../browser/chatEditing/codexExternalEditReviewSession.js';
 import { CodexWorkspaceEditCapture } from '../../browser/chatEditing/codexWorkspaceEditCapture.js';
 import { IChatService } from '../../common/chatService/chatService.js';
+import { getChatEditingEntryForResource } from '../../browser/chatEditing/chatEditingChangeNavigation.js';
+import { EditorResourceAccessor, IEditorPane } from '../../../../common/editor.js';
+import { IChatEditingService, ModifiedFileEntryState } from '../../common/editing/chatEditingService.js';
+import { AcceptAction, RejectAction } from '../../browser/chatEditing/chatEditingEditorActions.js';
+import { EditorInput } from '../../../../common/editor/editorInput.js';
+import { IEditorService } from '../../../../services/editor/common/editorService.js';
 
 suite('CodexExternalEditReviewSession', () => {
 	const store = new DisposableStore();
@@ -112,6 +120,71 @@ suite('CodexExternalEditReviewSession', () => {
 		await session.begin(operationId, [{ resource, kind: 'update' }]);
 		await write(value);
 		await session.end(operationId);
+	}
+
+	for (const accept of [true, false]) {
+		test(`deletion toolbar ${accept ? 'accept' : 'reject'} waits for review before opening the next file`, async () => {
+			await write('deleted content');
+			await session.begin('delete', [{ resource, kind: 'delete' }]);
+			await files.del(resource);
+			await session.end('delete');
+			const entry = session.getEntry(resource);
+			assert.ok(entry instanceof ChatEditingDeletedFileEntry);
+			const deleted = entry;
+			const nextResource = URI.file('/workspace/next.txt');
+			await session.begin('add', [{ resource: nextResource, kind: 'add' }]);
+			await files.writeFile(nextResource, VSBuffer.fromString('next change'));
+			await session.end('add');
+			await session.getEntry(nextResource)!.getDiffInfo!();
+			const config = new TestConfigurationService({ 'chat.editing.revealNextChangeOnResolve': true });
+			store.add(config.onDidChangeConfigurationEmitter);
+			insta.stub(IConfigurationService, config);
+			insta.stub(IChatEditingService, new class extends mock<IChatEditingService>() {
+				override readonly editingSessionsObs = constObservable([session]);
+			});
+			const opened: object[] = [];
+			insta.stub(IEditorService, new class extends mock<IEditorService>() {
+				override readonly activeEditorPane = new class extends mock<IEditorPane>() {
+					override readonly input = new class extends mock<EditorInput>() {
+						override get typeId() { return 'deletion-preview-test'; }
+						override readonly resource = deleted.modifiedModelURI;
+					};
+				};
+				override openEditor: IEditorService['openEditor'] = async input => {
+					opened.push({ resource: EditorResourceAccessor.getOriginalUri(input)?.toString(), state: deleted.state.get(), exists: await files.exists(resource) });
+					return undefined;
+				};
+			});
+			await insta.invokeFunction(accessor => (accept ? new AcceptAction() : new RejectAction()).run(accessor));
+			assert.deepStrictEqual(opened, [{
+				resource: nextResource.toString(),
+				state: accept ? ModifiedFileEntryState.Accepted : ModifiedFileEntryState.Rejected, exists: !accept,
+			}]);
+		});
+
+		test(`deleted file preview can be resolved and ${accept ? 'accepted without restoring the file' : 'rejected to restore the file'}`, async () => {
+			await write('before deletion\n');
+			await session.begin('delete', [{ resource, kind: 'delete' }]);
+			await files.del(resource);
+			await session.end('delete');
+			const entry = session.getEntry(resource);
+			assert.ok(entry instanceof ChatEditingDeletedFileEntry);
+			const resolver = insta.get(ITextModelService);
+			const original = store.add(await resolver.createModelReference(entry.originalURI));
+			const modified = store.add(await resolver.createModelReference(entry.modifiedModelURI));
+			assert.deepStrictEqual({
+				original: original.object.textEditorModel.getValue(),
+				modified: modified.object.textEditorModel.getValue(),
+				exists: await files.exists(resource),
+			}, { original: 'before deletion\n', modified: '', exists: false });
+			assert.strictEqual(getChatEditingEntryForResource(session, entry.modifiedModelURI), entry);
+			const integration = entry.getEditorIntegration(new class extends mock<IEditorPane>() { });
+			await (accept ? integration.acceptNearestChange(undefined) : integration.rejectNearestChange(undefined));
+			assert.deepStrictEqual({ state: entry.state.get(), content: await files.exists(resource) ? await read() : undefined }, {
+				state: accept ? ModifiedFileEntryState.Accepted : ModifiedFileEntryState.Rejected,
+				content: accept ? undefined : 'before deletion\n',
+			});
+		});
 	}
 	async function captureWorkspace(resources: URI[] = [resource]): Promise<CodexWorkspaceEditCapture> {
 		insta.stub(IWorkspaceContextService, new TestContextService(new Workspace('capture', [toWorkspaceFolder(URI.file('/workspace'))], false, null, () => false)));

@@ -7,8 +7,26 @@ import { IReader } from '../../../../../base/common/observable.js';
 import { isEqual } from '../../../../../base/common/resources.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { IRange } from '../../../../../editor/common/core/range.js';
+import { IResourceEditorInput } from '../../../../../platform/editor/common/editor.js';
+import { IResourceDiffEditorInput } from '../../../../common/editor.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IChatEditReviewSession, IModifiedFileEntry, ModifiedFileEntryState } from '../../common/editing/chatEditingService.js';
+
+/** Resolve virtual deletion previews to their review entry for toolbar actions and context keys. */
+export function getChatEditingEntryForResource(session: IChatEditReviewSession, resource: URI, reader?: IReader): IModifiedFileEntry | undefined {
+	return (reader ? session.readEntry(resource, reader) : session.getEntry(resource))
+		?? session.entries.read(reader).find(entry => entry.isDeletion &&
+			(isEqual(entry.modifiedModelURI, resource) || isEqual(entry.originalURI, resource)));
+}
+
+/** Deleted files are reviewed against an empty virtual model, never the missing disk resource. */
+export function getChatEditingReviewEditorInput(entry: IModifiedFileEntry): IResourceEditorInput | IResourceDiffEditorInput {
+	const options = { revealIfOpened: false, revealIfVisible: false };
+	if (entry.isDeletion && entry.modifiedModelURI) {
+		return { original: { resource: entry.originalURI }, modified: { resource: entry.modifiedModelURI }, options };
+	}
+	return { resource: entry.modifiedURI, options };
+}
 
 /** Select a pending change, preferring the current file, and check whether it is on screen. */
 export function getChatEditingChangeNavigation(
@@ -28,7 +46,7 @@ export function getChatEditingChangeNavigation(
 				continue;
 			}
 			first ??= { session, entry, visible: false };
-			if (isEqual(entry.modifiedURI, resource)) {
+			if (isEqual(entry.modifiedURI, resource) || isEqual(entry.modifiedModelURI, resource)) {
 				const changes = entry.diffInfo?.read(reader).changes;
 				const visible = changes?.some(change => {
 					// A deletion has no modified lines; its decoration is anchored to the next line.
@@ -48,18 +66,17 @@ export async function revealChatEditingChange(
 	target: NonNullable<ReturnType<typeof getChatEditingChangeNavigation>>,
 	editorService: IEditorService,
 	groupId: number,
-): Promise<void> {
+	first = true,
+): Promise<boolean> {
 	const isPending = () => target.session.entries.get().includes(target.entry)
 		&& target.entry.state.get() === ModifiedFileEntryState.Modified
 		&& target.entry.changesCount.get() > 0;
 	if (!isPending()) {
-		return;
+		return false;
 	}
-	const pane = await editorService.openEditor({
-		resource: target.entry.modifiedURI,
-		options: { revealIfOpened: false, revealIfVisible: false },
-	}, groupId);
+	const pane = await editorService.openEditor(getChatEditingReviewEditorInput(target.entry), groupId);
 	if (pane && isPending()) {
-		target.entry.getEditorIntegration(pane).reveal(true);
+		target.entry.getEditorIntegration(pane).reveal(first);
 	}
+	return !!pane;
 }

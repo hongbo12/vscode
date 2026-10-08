@@ -12,7 +12,7 @@ import { LineRange } from '../../../../../editor/common/core/ranges/lineRange.js
 import { Range } from '../../../../../editor/common/core/range.js';
 import { DetailedLineRangeMapping } from '../../../../../editor/common/diff/rangeMapping.js';
 import { IDocumentDiff } from '../../../../../editor/common/diff/documentDiffProvider.js';
-import { getChatEditingChangeNavigation, revealChatEditingChange } from '../../browser/chatEditing/chatEditingChangeNavigation.js';
+import { getChatEditingChangeNavigation, getChatEditingEntryForResource, getChatEditingReviewEditorInput, revealChatEditingChange } from '../../browser/chatEditing/chatEditingChangeNavigation.js';
 import { ITextDiffEditorPane } from '../../../../common/editor.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IChatEditReviewSession, IModifiedFileEntry, IModifiedFileEntryEditorIntegration, ModifiedFileEntryState } from '../../common/editing/chatEditingService.js';
@@ -23,9 +23,12 @@ suite('ChatEditingChangeNavigation', () => {
 	const other = URI.file('/workspace/other.ts');
 	const viewport = [new Range(20, 1, 40, 1)];
 
-	function entry(resource: URI, start: number, end: number) {
+	function entry(resource: URI, start: number, end: number, deletion = false) {
 		return new class extends mock<IModifiedFileEntry>() {
 			override readonly modifiedURI = resource;
+			override readonly isDeletion = deletion;
+			override readonly originalURI = resource.with({ scheme: 'chat-editing', query: 'original' });
+			override readonly modifiedModelURI = deletion ? resource.with({ scheme: 'chat-editing', query: 'deleted' }) : undefined;
 			override readonly state = observableValue('state', ModifiedFileEntryState.Modified);
 			override readonly changesCount = observableValue('changesCount', 1);
 			override readonly diffInfo = observableValue<IDocumentDiff>('diff', {
@@ -39,6 +42,8 @@ suite('ChatEditingChangeNavigation', () => {
 		return new class extends mock<IChatEditReviewSession>() {
 			override readonly isGlobalEditingSession = global;
 			override readonly entries = constObservable(entries);
+			override getEntry(resource: URI) { return entries.find(entry => entry.modifiedURI.toString() === resource.toString()); }
+			override readEntry(resource: URI) { return this.getEntry(resource); }
 		};
 	}
 
@@ -52,6 +57,26 @@ suite('ChatEditingChangeNavigation', () => {
 		const changed = entry(current, 60, 65);
 		const review = session([changed]);
 		assert.deepStrictEqual(getChatEditingChangeNavigation([session([entry(other, 1, 2)]), review], current, viewport, 100, undefined), { session: review, entry: changed, visible: false });
+	});
+
+	test('deletion preview resolves the review entry and proceeds to another file after review', () => {
+		const deleted = entry(other, 1, 1, true);
+		const remaining = entry(current, 1, 2);
+		const review = session([deleted, remaining]);
+		const preview = deleted.modifiedModelURI!;
+		assert.strictEqual(getChatEditingEntryForResource(review, preview), deleted);
+		assert.strictEqual(getChatEditingEntryForResource(review, deleted.originalURI), deleted);
+		assert.deepStrictEqual(getChatEditingChangeNavigation([review], preview, [new Range(1, 1, 1, 1)], 1, undefined), { session: review, entry: deleted, visible: true });
+		deleted.state.set(ModifiedFileEntryState.Accepted, undefined);
+		assert.deepStrictEqual(getChatEditingChangeNavigation([review], preview, [new Range(1, 1, 1, 1)], 1, undefined), { session: review, entry: remaining, visible: false });
+	});
+
+	test('deleted file input compares the original snapshot with the empty virtual model', () => {
+		const deleted = entry(other, 1, 1, true);
+		assert.deepStrictEqual(getChatEditingReviewEditorInput(deleted), {
+			original: { resource: deleted.originalURI }, modified: { resource: deleted.modifiedModelURI },
+			options: { revealIfOpened: false, revealIfVisible: false },
+		});
 	});
 
 	for (const { name, start, end, visible } of [
@@ -98,10 +123,10 @@ suite('ChatEditingChangeNavigation', () => {
 		assert.deepStrictEqual(states, [true, false, undefined]);
 	});
 
-	for (const settleWhileOpening of [false, true]) {
-		test(settleWhileOpening ? 'does not reveal a change settled while opening' : 'opens the modified file in the originating group and reveals its first change', async () => {
+	for (const { deletion, settleWhileOpening } of [false, true].flatMap(deletion => [false, true].map(settleWhileOpening => ({ deletion, settleWhileOpening })))) {
+		test(`${deletion ? 'deleted' : 'modified'}: ${settleWhileOpening ? 'does not reveal a change settled while opening' : 'opens in the originating group and reveals the first change'}`, async () => {
 			const calls: object[] = [];
-			const changed = entry(other, 60, 65);
+			const changed = entry(other, 60, 65, deletion);
 			const pane = new class extends mock<ITextDiffEditorPane>() { };
 			changed.getEditorIntegration = editor => {
 				assert.strictEqual(editor, pane);
@@ -120,7 +145,10 @@ suite('ChatEditingChangeNavigation', () => {
 			};
 			await revealChatEditingChange({ session: session([changed]), entry: changed, visible: false }, editorService, 7);
 			assert.deepStrictEqual(calls, [
-				{ input: { resource: other, options: { revealIfOpened: false, revealIfVisible: false } }, group: 7 },
+				{ input: deletion ? {
+					original: { resource: changed.originalURI }, modified: { resource: changed.modifiedModelURI },
+					options: { revealIfOpened: false, revealIfVisible: false },
+				} : { resource: other, options: { revealIfOpened: false, revealIfVisible: false } }, group: 7 },
 				...(settleWhileOpening ? [] : [{ first: true }]),
 			]);
 		});

@@ -15,6 +15,7 @@ import { IEditorGroup, IEditorGroupsService } from '../../../../services/editor/
 import { IInlineChatSessionService } from '../../../inlineChat/browser/inlineChatSessionService.js';
 import { IChatEditReviewSession, IChatEditingService, IModifiedFileEntry, ModifiedFileEntryState } from '../../common/editing/chatEditingService.js';
 import { IChatService } from '../../common/chatService/chatService.js';
+import { getChatEditingEntryForResource } from './chatEditingChangeNavigation.js';
 
 export const ctxIsGlobalEditingSession = new RawContextKey<boolean>('chatEdits.isGlobalEditingSession', undefined, localize('chat.ctxEditSessionIsGlobal', "The current editor is part of the global edit session"));
 export const ctxHasEditorModification = new RawContextKey<boolean>('chatEdits.hasEditorModifications', undefined, localize('chat.hasEditorModifications', "The current editor contains chat modifications"));
@@ -161,7 +162,7 @@ export class ObservableEditorSession {
 
 		const sessionObs = chatEditingService.editingSessionsObs.map((value, r) => {
 			for (const session of value) {
-				const entry = session.readEntry(uri, r);
+				const entry = getChatEditingEntryForResource(session, uri, r);
 				if (entry) {
 					return { session, entry, isInlineChat: false };
 				}

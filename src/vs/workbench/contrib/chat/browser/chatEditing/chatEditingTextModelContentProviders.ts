@@ -10,16 +10,16 @@ import { IModelService } from '../../../../../editor/common/services/model.js';
 import { ITextModelContentProvider } from '../../../../../editor/common/services/resolverService.js';
 import { IChatEditingService } from '../../common/editing/chatEditingService.js';
 
-type ChatEditingTextModelContentQueryData = { kind: 'doc'; documentId: string; chatSessionResource: UriComponents };
+type ChatEditingTextModelContentQueryData = { kind: 'doc' | 'deleted'; documentId: string; chatSessionResource: UriComponents };
 
 export class ChatEditingTextModelContentProvider implements ITextModelContentProvider {
 	public static readonly scheme = Schemas.chatEditingModel;
 
-	public static getFileURI(chatSessionResource: URI, documentId: string, path: string): URI {
+	public static getFileURI(chatSessionResource: URI, documentId: string, path: string, kind: ChatEditingTextModelContentQueryData['kind'] = 'doc'): URI {
 		return URI.from({
 			scheme: ChatEditingTextModelContentProvider.scheme,
 			path,
-			query: JSON.stringify({ kind: 'doc', documentId, chatSessionResource } satisfies ChatEditingTextModelContentQueryData),
+			query: JSON.stringify({ kind, documentId, chatSessionResource } satisfies ChatEditingTextModelContentQueryData),
 		});
 	}
 
@@ -43,7 +43,8 @@ export class ChatEditingTextModelContentProvider implements ITextModelContentPro
 			return null;
 		}
 
-		return this._modelService.getModel(entry.originalURI);
+		const modelURI = data.kind === 'deleted' ? entry.modifiedModelURI : entry.originalURI;
+		return modelURI ? this._modelService.getModel(modelURI) : null;
 	}
 }
 

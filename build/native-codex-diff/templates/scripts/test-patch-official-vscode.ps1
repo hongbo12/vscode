@@ -54,8 +54,8 @@ function Resolve-OfficialAppDir {
 
 			try {
 				$product = Get-Content -LiteralPath $productPath -Raw | ConvertFrom-Json
-				if ($product.version -eq '1.138.0' -and
-					$product.commit -eq '7debcd0e2acdea1c52de81bf9ee1620444407dda' -and
+				if ($product.version -eq '1.141.0' -and
+					$product.commit -eq '2a59476c9bfcb90b3ddc372c36762471b7dfad1c' -and
 					$product.applicationName -eq 'code') {
 					$matches += [IO.Path]::GetFullPath($appDir)
 				}
@@ -99,7 +99,7 @@ if (-not $fixtureRoot.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgno
 }
 
 $fixtureInstallDir = Join-Path $fixtureRoot 'official'
-$fixtureAppDir = Join-Path $fixtureInstallDir '7debcd0e2a\resources\app'
+$fixtureAppDir = Join-Path $fixtureInstallDir '2a59476c9b\resources\app'
 $fixtureOutDir = Join-Path $fixtureAppDir 'out'
 $fixtureBackupRoot = Join-Path $fixtureRoot 'backups'
 $originalHashes = @{}

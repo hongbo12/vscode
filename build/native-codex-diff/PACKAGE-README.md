@@ -1,6 +1,6 @@
 # 原生代码差异审阅补丁
 
-目标：VS Code(代码编辑器) 1.138.0，官方提交 `7debcd0e2acdea1c52de81bf9ee1620444407dda`。
+目标：VS Code(代码编辑器) 1.141.0，官方提交 `2a59476c9bfcb90b3ddc372c36762471b7dfad1c`。
 
 补丁由当前源码库的功能改动应用到官方版本源码后重新构建。具体源码差异、修订标识和文件哈希记录在 `source-changes.patch`、`build-manifest.json` 和 `payload/product.json` 中。
 

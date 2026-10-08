@@ -417,6 +417,8 @@ export interface IModifiedFileEntry {
 	readonly originalURI: URI;
 	readonly modifiedURI: URI;
 	readonly isDeletion?: boolean;
+	/** Virtual modified model used to review a deleted file without recreating it on disk. */
+	readonly modifiedModelURI?: URI;
 
 	readonly lastModifyingRequestId: string;
 

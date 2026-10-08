@@ -34,7 +34,7 @@ import { Button } from '../../../../../base/browser/ui/button/button.js';
 import { onUnexpectedError } from '../../../../../base/common/errors.js';
 import { defaultButtonStyles } from '../../../../../platform/theme/browser/defaultStyles.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { getChatEditingChangeNavigation, revealChatEditingChange } from './chatEditingChangeNavigation.js';
+import { getChatEditingChangeNavigation, getChatEditingEntryForResource, revealChatEditingChange } from './chatEditingChangeNavigation.js';
 
 export class ChatEditingAcceptRejectActionViewItem extends ActionViewItem {
 
@@ -396,7 +396,7 @@ class ChatEditingOverlayController {
 				if (!session.isGlobalEditingSession) {
 					continue;
 				}
-				const entry = session.readEntry(uri, r);
+				const entry = getChatEditingEntryForResource(session, uri, r);
 				if (entry?.state.read(r) === ModifiedFileEntryState.Modified) {
 					return { session, entry };
 				}

@@ -7,6 +7,7 @@ import { VSBuffer } from '../../../../../base/common/buffer.js';
 import { constObservable, IObservable, ITransaction, observableValue, transaction } from '../../../../../base/common/observable.js';
 import { isEqual } from '../../../../../base/common/resources.js';
 import { URI } from '../../../../../base/common/uri.js';
+import { isDiffEditor } from '../../../../../editor/browser/editorBrowser.js';
 import { LineRange } from '../../../../../editor/common/core/ranges/lineRange.js';
 import { IDocumentDiff } from '../../../../../editor/common/diff/documentDiffProvider.js';
 import { DetailedLineRangeMapping } from '../../../../../editor/common/diff/rangeMapping.js';
@@ -59,6 +60,7 @@ export class ChatEditingDeletedFileEntry extends AbstractChatEditingModifiedFile
 	private _modifiedModel: ITextModel | undefined;
 
 	readonly originalURI: URI;
+	readonly modifiedModelURI: URI;
 
 	readonly diffInfo: IObservable<IDocumentDiff>;
 	readonly linesAdded: IObservable<number> = constObservable(0);
@@ -100,6 +102,7 @@ export class ChatEditingDeletedFileEntry extends AbstractChatEditingModifiedFile
 		this._originalContent = originalContent;
 		this.initialContent = originalContent;
 		this.originalURI = ChatEditingTextModelContentProvider.getFileURI(telemetryInfo.sessionResource, this.entryId, resource.path);
+		this.modifiedModelURI = ChatEditingTextModelContentProvider.getFileURI(telemetryInfo.sessionResource, this.entryId, resource.path, 'deleted');
 		this.diffInfo = constObservable(this._diffInfo());
 		this.linesRemoved = constObservable(this._getOrCreateOriginalModel().getLineCount());
 	}
@@ -134,7 +137,7 @@ export class ChatEditingDeletedFileEntry extends AbstractChatEditingModifiedFile
 			this._modifiedModel = this._modelService.createModel(
 				'',
 				this._languageService.createById(this._languageId),
-				this.modifiedURI.with({ scheme: 'deleted-file' }),
+				this.modifiedModelURI,
 				false
 			);
 		}
@@ -249,16 +252,20 @@ export class ChatEditingDeletedFileEntry extends AbstractChatEditingModifiedFile
 		this._multiDiffEntryDelegate.collapse(undefined);
 	}
 
-	protected _createEditorIntegration(_editor: IEditorPane): IModifiedFileEntryEditorIntegration {
-		// Deleted files don't need complex editor integration since there's nothing to navigate
+	protected _createEditorIntegration(editor: IEditorPane): IModifiedFileEntryEditorIntegration {
 		return {
 			currentIndex: observableValue(this, 0),
-			reveal: () => { },
+			reveal: first => {
+				const control = editor.getControl();
+				if (isDiffEditor(control)) {
+					control.getOriginalEditor().revealLineInCenter(first ? 1 : this._getOrCreateOriginalModel().getLineCount());
+				}
+			},
 			next: () => false,
 			previous: () => false,
 			enableAccessibleDiffView: () => { },
-			acceptNearestChange: async () => { },
-			rejectNearestChange: async () => { },
+			acceptNearestChange: () => this.accept(),
+			rejectNearestChange: () => this.reject(),
 			toggleDiff: async () => { },
 			dispose: () => { }
 		};

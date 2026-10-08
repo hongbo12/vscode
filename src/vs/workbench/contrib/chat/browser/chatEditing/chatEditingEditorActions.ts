@@ -40,6 +40,7 @@ import { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { Event } from '../../../../../base/common/event.js';
 import { ChatConfiguration } from '../../common/constants.js';
+import { getChatEditingEntryForResource, revealChatEditingChange } from './chatEditingChangeNavigation.js';
 
 
 abstract class ChatEditingEditorAction extends Action2 {
@@ -64,13 +65,13 @@ abstract class ChatEditingEditorAction extends Action2 {
 		}
 
 		const session = chatEditingService.editingSessionsObs.get()
-			.find(candidate => candidate.getEntry(uri));
+			.find(candidate => getChatEditingEntryForResource(candidate, uri));
 
 		if (!session) {
 			return;
 		}
 
-		const entry = session.getEntry(uri)!;
+		const entry = getChatEditingEntryForResource(session, uri)!;
 		const ctrl = entry.getEditorIntegration(editorService.activeEditorPane);
 
 		return instaService.invokeFunction(this.runChatEditingCommand.bind(this), session, entry, ctrl, ...args);
@@ -142,35 +143,14 @@ async function openNextOrPreviousChange(accessor: ServicesAccessor, session: ICh
 	const entries = session.entries.get();
 	let idx = entries.indexOf(entry);
 
-	let newEntry: IModifiedFileEntry;
-	while (true) {
+	for (let remaining = entries.length; remaining > 0; remaining--) {
 		idx = (idx + (next ? 1 : -1) + entries.length) % entries.length;
-		newEntry = entries[idx];
-		if (newEntry.state.get() === ModifiedFileEntryState.Modified) {
-			break;
-		} else if (newEntry === entry) {
-			return false;
+		const newEntry = entries[idx];
+		if (newEntry !== entry && newEntry.state.get() === ModifiedFileEntryState.Modified && newEntry.changesCount.get() > 0) {
+			return revealChatEditingChange({ session, entry: newEntry, visible: false }, editorService, ACTIVE_GROUP, next);
 		}
 	}
-
-	const pane = await editorService.openEditor({
-		resource: newEntry.modifiedURI,
-		options: {
-			revealIfOpened: false,
-			revealIfVisible: false,
-		}
-	}, ACTIVE_GROUP);
-
-	if (!pane) {
-		return false;
-	}
-
-	if (session.entries.get().includes(newEntry)) {
-		// make sure newEntry is still valid!
-		newEntry.getEditorIntegration(pane).reveal(next);
-	}
-
-	return true;
+	return false;
 }
 
 abstract class KeepOrUndoAction extends ChatEditingEditorAction {
@@ -214,9 +194,9 @@ abstract class KeepOrUndoAction extends ChatEditingEditorAction {
 		const configService = accessor.get(IConfigurationService);
 
 		if (this._keep) {
-			session.accept(entry.modifiedURI);
+			await session.accept(entry.modifiedURI);
 		} else {
-			session.reject(entry.modifiedURI);
+			await session.reject(entry.modifiedURI);
 		}
 
 		if (configService.getValue<boolean>(ChatConfiguration.RevealNextChangeOnResolve)) {

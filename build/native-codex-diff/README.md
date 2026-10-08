@@ -1,6 +1,6 @@
 # 原生差异审阅的源码与兼容构建
 
-功能源码维护在当前主仓库。补丁以官方 1.138.0 提交 `7debcd0e2acdea1c52de81bf9ee1620444407dda` 为构建基线；主仓库继续保留 1.139.0，不需要切换分支或修改已安装的编辑器。
+功能源码维护在当前主仓库。补丁以官方 1.141.0 提交 `2a59476c9bfcb90b3ddc372c36762471b7dfad1c` 为构建基线；主仓库继续保留 1.139.0，不需要切换分支或修改已安装的编辑器。
 
 ## 日常修改位置
 
@@ -20,17 +20,17 @@
 在仓库根目录运行：
 
 ```powershell
-git fetch https://github.com/microsoft/vscode.git 7debcd0e2acdea1c52de81bf9ee1620444407dda
-node build/native-codex-diff/build.mjs all --official-app-dir 'D:\Microsoft VS Code\7debcd0e2a\resources\app'
+git fetch https://github.com/microsoft/vscode.git 2a59476c9bfcb90b3ddc372c36762471b7dfad1c
+node build/native-codex-diff/build.mjs all --official-app-dir 'D:\Microsoft VS Code\2a59476c9b\resources\app'
 ```
 
-也可使用仓库快捷命令 `npm run native-diff:package -- --official-app-dir 'D:\Microsoft VS Code\7debcd0e2a\resources\app'`。
+也可使用仓库快捷命令 `npm run native-diff:package -- --official-app-dir 'D:\Microsoft VS Code\2a59476c9b\resources\app'`。
 
-命令读取当前工作区的源码内容，包含尚未提交的改动。它从 `target.json` 指定的开发基线提取功能差异，在独立的工作树上应用到官方 1.138.0，并使用该版本自身的锁文件安装构建依赖。发生合并冲突时停止，保留现场供检查。
+命令读取当前工作区的源码内容，包含尚未提交的改动。它从 `target.json` 指定的开发基线提取功能差异，在独立的工作树上应用到官方 1.141.0，并使用该版本自身的锁文件安装构建依赖。发生合并冲突时停止，保留现场供检查。
 
 构建以指定官方安装中的本地化文件为参考，保留旧消息编号；新增消息保留英文原文。目标版本或提交号不符、源码发生变化、产物被修改、哈希校验失败时停止打包。
 
-产物位于 `dist/native-codex-diff/1.138.0-<源码哈希>-<打包工具哈希>/`，包含独立补丁目录和压缩包。根据指定的官方应用目录生成本机安装路径配置，重新安装时无需再次输入路径。打包命令会先执行包检查，以及临时安装副本上的安装、验证、重复安装和恢复测试。不会关闭或修改正在运行的编辑器。同一份产物已存在时停止，避免覆盖已有包。
+产物位于 `dist/native-codex-diff/1.141.0-<源码哈希>-<打包工具哈希>/`，包含独立补丁目录和压缩包。根据指定的官方应用目录生成本机安装路径配置，重新安装时无需再次输入路径。打包命令会先执行包检查，以及临时安装副本上的安装、验证、重复安装和恢复测试。不会关闭或修改正在运行的编辑器。同一份产物已存在时停止，避免覆盖已有包。
 
 也可分别执行 `prepare`(准备兼容源码)、`build`(编译) 和 `package`(打包)；后两个阶段仍需指定官方应用目录。源码变化后重新执行完整命令，不复用旧产物。
 

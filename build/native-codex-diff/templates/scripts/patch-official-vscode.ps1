@@ -7,8 +7,8 @@
 Applies the Codex native inline diff runtime bundles to the matching official VS Code build.
 
 .DESCRIPTION
-This script is intentionally locked to the official VS Code 1.138.0 build whose commit is
-7debcd0e2acdea1c52de81bf9ee1620444407dda. It preserves the official product identity and
+This script is intentionally locked to the official VS Code 1.141.0 build whose commit is
+2a59476c9bfcb90b3ddc372c36762471b7dfad1c. It preserves the official product identity and
 user-data directories. Apply creates a complete backup before replacing six runtime
 bundles and updates only the four matching checksum values in product.json.
 
@@ -42,8 +42,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$SupportedVersion = '1.138.0'
-$SupportedOfficialCommit = '7debcd0e2acdea1c52de81bf9ee1620444407dda'
+$SupportedVersion = '1.141.0'
+$SupportedOfficialCommit = '2a59476c9bfcb90b3ddc372c36762471b7dfad1c'
 $ExpectedPatchCommit = '14c79d4bed33adba68885de4a1785143a824d311'
 $BundleRelativePaths = @(
 	'main.js',

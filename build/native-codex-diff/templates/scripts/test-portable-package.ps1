@@ -86,7 +86,7 @@ if ((Get-FileHash -LiteralPath $sourcePatch -Algorithm SHA256).Hash -ne $product
 if ((Get-FileHash -LiteralPath (Join-Path $packageFullPath 'runtime-patches.mjs') -Algorithm SHA256).Hash -ne $product.nativeReviewPatch.runtimePatchScriptSha256) {
 	throw 'The runtime transformation does not match the payload provenance.'
 }
-if ($product.version -ne '1.138.0' -or $product.commit -ne '14c79d4bed33adba68885de4a1785143a824d311') {
+if ($product.version -ne '1.141.0' -or $product.commit -ne '14c79d4bed33adba68885de4a1785143a824d311') {
 	throw 'The payload metadata does not match the tested patch build.'
 }
 
